@@ -8,6 +8,7 @@ const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const root = path.resolve(__dirname, '..');
 const cache = new Map();
+let navigationSnapshot = null;
 function loadTs(relative) {
   let filename = path.resolve(root, relative);
   if (!path.extname(filename)) filename += fs.existsSync(filename + '.ts') ? '.ts' : '.tsx';
@@ -21,7 +22,8 @@ function loadTs(relative) {
   instance.require = specifier => {
     if (specifier.endsWith('.css')) return { __esModule: true, default: new Proxy({}, { get: (_, name) => String(name) }) };
     if (specifier === '@/components/shell/AppShell') return { AppShell: ({ children }) => React.createElement('main', null, children) };
-    if (specifier === '@/services/emps-api') return { api: {}, isReadOnlyMode: true, frontSession: { get: () => null } };
+    if (specifier === '@/services/emps-api') return { api: { cached: () => null, cachedList: () => navigationSnapshot }, isReadOnlyMode: true, frontSession: { get: () => null } };
+    if (specifier === '@/components/shell/NavigationLink') return { NavigationLink: ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children) };
     if (specifier === '@/components/realtime/RealtimeProvider') return { useRealtime: () => ({ connectionVersion: 0, status: 'disabled', topicRevisions: {} }) };
     if (specifier.startsWith('@/')) return loadTs(specifier.slice(2));
     if (specifier.startsWith('.')) return loadTs(path.relative(root, path.resolve(path.dirname(filename), specifier)));
@@ -132,6 +134,17 @@ test('all four operational pages render accessible search and honest loading sta
     assert.match(html, /Carregando dados/);
     assert.doesNotMatch(html, /Contrato canônico|dados puros/);
   }
+});
+
+test('a warm operational page renders its rows immediately and preserves the actual consultation timestamp', () => {
+  navigationSnapshot = { value: [client()], updatedAt: Date.parse('2026-10-12T12:00:00Z') };
+  try {
+    const { OperationalPage } = loadTs('components/operations/OperationalPage.tsx');
+    const html = renderToStaticMarkup(React.createElement(OperationalPage, { resource: 'clientes' }));
+    assert.match(html, /Jos[eé] Almeida/);
+    assert.doesNotMatch(html, /Carregando dados|Consultando registros/);
+    assert.match(html, /dateTime="2026-10-12T12:00:00.000Z"/);
+  } finally { navigationSnapshot = null; }
 });
 test('shared summary does not turn an unavailable query into zero', () => {
   const { OperationsSummary } = loadTs('components/operations/OperationsUI.tsx');

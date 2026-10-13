@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/shell/NavigationLink';
 import { CircleCheck, CircleEllipsis, Clock3, Mail, MapPin, PanelTop, Plus, RotateCw, Search, TriangleAlert, WifiOff } from 'lucide-react';
 import { AppShell } from '@/components/shell/AppShell';
-import { api } from '@/services/emps-api';
+import { api, isAccessDenied } from '@/services/emps-api';
 import { StationListFilter, StationListLanguage } from './StationListControls';
 import { StationListTable, type StationListSort } from './StationListTable';
 import { stationListCopy } from './station-list-copy';
@@ -14,8 +14,9 @@ import styles from './station-list.module.css';
 const statusIcons = { running: CircleCheck, waiting: Clock3, offline: WifiOff, fault: TriangleAlert, constructing: CircleEllipsis };
 
 export function StationList({ fontClassName = '' }: { fontClassName?: string }) {
-  const [rows, setRows] = useState<StationListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<StationListEntry[]>(() => api.cached<StationListEntry[]>('/v2/stations')?.value ?? []);
+  const [loading, setLoading] = useState(() => !api.cached('/v2/stations'));
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [locale, setLocale] = useState<StationLocale>('pt-BR');
   const [draftSearch, setDraftSearch] = useState<SearchFields>({ ...emptySearch });
@@ -31,11 +32,11 @@ export function StationList({ fontClassName = '' }: { fontClassName?: string }) 
   const [pageSize, setPageSize] = useState(15);
   const copy = stationListCopy[locale];
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true); setError('');
+  const load = useCallback(async (signal?: AbortSignal, force = false) => {
+    setLoading(!api.cached('/v2/stations')); setRefreshing(true); setError('');
     try {
       const [stations, user] = await Promise.all([
-        api.platform<StationListEntry[]>('/v2/stations', { signal }),
+        api.platform<StationListEntry[]>('/v2/stations', { signal }, { force }),
         api.platform<{ id: number; platformReviewer: boolean }>('/auth/me', { signal }),
       ]);
       if (signal?.aborted) return;
@@ -49,8 +50,8 @@ export function StationList({ fontClassName = '' }: { fontClassName?: string }) 
         if (Array.isArray(saved.columns)) setColumns(metricColumns.filter(column => saved.columns.includes(column)));
       } catch { /* Invalid local preferences do not block the station list. */ }
     } catch (reason) {
-      if (!signal?.aborted) setError(reason instanceof Error ? reason.message : 'Unable to load stations');
-    } finally { if (!signal?.aborted) setLoading(false); }
+      if (!signal?.aborted) { if (isAccessDenied(reason)) setRows([]); setError(reason instanceof Error ? reason.message : 'Unable to load stations'); }
+    } finally { if (!signal?.aborted) { setLoading(false); setRefreshing(false); } }
   }, []);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function StationList({ fontClassName = '' }: { fontClassName?: string }) 
     return result;
   }, [searched, tab, sort, copy, locale]);
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
-  const reset = () => { setDraftSearch({ ...emptySearch }); setSearch({ ...emptySearch }); setFilters({ ...emptyAdvanced }); setTab('all'); setPage(1); setSort(null); void load(); };
+  const reset = () => { setDraftSearch({ ...emptySearch }); setSearch({ ...emptySearch }); setFilters({ ...emptyAdvanced }); setTab('all'); setPage(1); setSort(null); void load(undefined, true); };
   const setLanguage = (value: StationLocale) => {
     setLocale(value);
     try { localStorage.setItem('emps.station-list.language', value); } catch { /* The language still changes without persistent storage. */ }
@@ -94,7 +95,7 @@ export function StationList({ fontClassName = '' }: { fontClassName?: string }) 
           <field.icon size={17} aria-hidden="true" /><input type="search" value={draftSearch[field.key]} aria-label={field.label} placeholder={field.label} onChange={event => setDraftSearch(current => ({ ...current, [field.key]: event.target.value }))} />
         </label>)}
         <button className={styles.searchButton} type="submit" title={copy.search} aria-label={copy.search}><Search size={19} aria-hidden="true" /></button>
-        <button className={styles.searchButton} type="button" disabled={loading} onClick={reset} title={copy.reset} aria-label={copy.reset}><RotateCw size={19} aria-hidden="true" className={loading ? styles.spinning : ''} /></button>
+        <button className={styles.searchButton} type="button" disabled={loading || refreshing} onClick={reset} title={copy.reset} aria-label={copy.reset}><RotateCw size={19} aria-hidden="true" className={loading || refreshing ? styles.spinning : ''} /></button>
         <Link className={styles.newStation} href="/stations/new"><Plus size={18} aria-hidden="true" />{copy.newStation}</Link>
       </form>
       <nav className={styles.tabs} aria-label={copy.filter}>

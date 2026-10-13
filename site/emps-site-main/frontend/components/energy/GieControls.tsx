@@ -6,13 +6,13 @@ import type {GieState} from '@/domain/gie';
 import styles from './GieControls.module.css';
 type Station={id:string;name:string;giePrimary?:boolean};
 const modes={NORMAL:'Normal · horário e sessões',PRESENTATION:'Apresentação · cenas',MANUAL_DEMO:'Demo manual · sessões',SIMULATION:'Simulação · entrada externa'};
-export function GieControls({onState}:{onState:(state:GieState)=>void}) {
- const [stations,setStations]=useState<Station[]>([]),[stationId,setStationId]=useState(''),[state,setState]=useState<GieState|null>(null);
+export function GieControls({onState,initialStationId}:{onState:(state:GieState)=>void;initialStationId?:string}) {
+ const [stations,setStations]=useState<Station[]>([]),[stationId,setStationId]=useState(initialStationId??''),[state,setState]=useState<GieState|null>(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[chargerId,setChargerId]=useState(''),[slot,setSlot]=useState('1');
  const [presentationTools,setPresentationTools]=useState(false);
  useEffect(()=>{void api.platform<{presentationTools:boolean}>('/auth/me').then(a=>setPresentationTools(a.presentationTools)).catch(()=>undefined)},[]);
  const generation=useRef(0);
- useEffect(()=>{let alive=true;void api.stations().then(rows=>{if(!alive)return;const list=rows as Station[];setStations(list);setStationId(String(selectedStation.get()??list[0]?.id??''));}).catch(e=>setError(e.message));return()=>{alive=false;};},[]);
+ useEffect(()=>{let alive=true;void api.stations().then(rows=>{if(!alive)return;const list=rows as Station[];setStations(list);setStationId(String(initialStationId??selectedStation.get()??list[0]?.id??''));}).catch(e=>setError(e.message));return()=>{alive=false;};},[initialStationId]);
  const pending=useRef<Promise<boolean>|null>(null);
  const load=useCallback(()=>{
   if(pending.current)return pending.current;

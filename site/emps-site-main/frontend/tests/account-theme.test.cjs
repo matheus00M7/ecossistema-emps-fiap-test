@@ -30,6 +30,7 @@ function load(file) {
     if (name === '@/components/stations/station-wizard-font') return { stationWizardFont: { className: 'test-font' } };
     if (name === 'next/image') return ({ priority, ...props }) => React.createElement('img', props);
     if (name === 'next/link') return ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children);
+    if (name === './NavigationLink') return { NavigationLink: ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children) };
     if (name.startsWith('.') || name.startsWith('@/')) {
       const base = name.startsWith('@/') ? path.join(root, name.slice(2)) : path.resolve(path.dirname(filename), name);
       for (const extension of ['.ts', '.tsx']) if (fs.existsSync(base + extension)) return load(base + extension);

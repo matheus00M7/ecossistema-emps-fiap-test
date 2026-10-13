@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/shell/NavigationLink';
 import { ChevronLeft, ChevronRight, ChevronsUpDown, Inbox, MoreHorizontal, Star, Zap } from 'lucide-react';
 import { StationPhoto } from './StationPhoto';
 import { StationListColumns } from './StationListControls';

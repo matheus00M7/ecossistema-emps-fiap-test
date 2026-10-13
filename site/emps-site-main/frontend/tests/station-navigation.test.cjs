@@ -17,6 +17,7 @@ function load(file, mocks = {}) {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name.endsWith('.css')) return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) };
     if (name === 'next/link') return ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children);
+    if (name === '@/components/shell/NavigationLink') return { NavigationLink: ({ children, href, ...props }) => React.createElement('a', { href, ...props }, children) };
     if (name.startsWith('.') || name.startsWith('@/')) {
       const base = name.startsWith('@/') ? name.slice(2) : path.relative(root, path.resolve(path.dirname(filename), name));
       for (const extension of ['.ts', '.tsx']) if (fs.existsSync(path.join(root, base + extension))) return load(base + extension, mocks);
@@ -69,7 +70,7 @@ test('legacy dashboard redirects to the installation list and panel route valida
 });
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
-function panelHarness() {
+function panelHarness(warm = false) {
   const states = [], requests = [], selected = [], redirects = [];
   let cursor = 0, cleanup, pendingEffect, dependencies;
   let session = { usuarioId: 'fixture', nome: 'Fixture', email: 'fixture@example.invalid', role: 'goodwe', modo: 'api', token: 'fixture' };
@@ -88,7 +89,7 @@ function panelHarness() {
     react,
     'next/navigation': { useRouter: () => router },
     'next/dynamic': () => function StationAdmin() { return null; },
-    '@/services/emps-api': { api: { ensureSession: async () => session, platform: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })) }, frontSession: { get: () => session }, selectedStation: { set: id => selected.push(id) }, EMPS_SESSION_CHANGED_EVENT: 'session' },
+    '@/services/emps-api': { api: { cached: (_path, _stationId, maxAge = 30_000) => warm && maxAge > 12_000 ? { value: { id: '7', name: 'Fixture' }, updatedAt: Date.now() - 12_000 } : null, ensureSession: async () => session, platform: (url, options) => new Promise((resolve, reject) => requests.push({ url, options, resolve, reject })) }, frontSession: { get: () => session }, selectedStation: { set: id => selected.push(id) }, EMPS_SESSION_CHANGED_EVENT: 'session' },
   });
   return { requests, selected, redirects,
     render(id = '7') { cursor = 0; return RoleDashboard({ stationId: id }); },
@@ -125,6 +126,21 @@ test('denied access never selects the station or mounts its operational panel', 
     const markup = renderToStaticMarkup(h.render());
     assert.ok(markup.includes('Forbidden'));
     assert.ok(markup.includes('href="/stations"'));
+    assert.deepEqual(h.selected, []);
+  } finally { h.dispose(); global.window = original; }
+});
+
+test('a recently visited panel mounts immediately but still removes access when revalidation is denied', async () => {
+  const original = global.window;
+  global.window = Object.assign(new EventTarget(), { location: { pathname: '/stations/7/dashboard' } });
+  const h = panelHarness(true);
+  try {
+    assert.equal(h.render().props.stationId, '7');
+    h.flush(); await settle();
+    assert.equal(h.requests[0].options.headers['X-Station-Id'], '7');
+    h.requests[0].reject(new Error('Forbidden')); await settle();
+    assert.notEqual(h.render().props.stationId, '7');
+    assert.match(renderToStaticMarkup(h.render()), /Forbidden/);
     assert.deepEqual(h.selected, []);
   } finally { h.dispose(); global.window = original; }
 });

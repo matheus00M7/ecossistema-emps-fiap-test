@@ -2,7 +2,7 @@
 
 Site de operacao, aplicativo de recarga, API e gerenciamento inteligente de
 energia em um unico repositorio. Esta copia inclui o trabalho consolidado ate
-12/10/2026. O projeto ainda e um prototipo: publicacao de codigo nao equivale a
+13/10/2026. O projeto ainda e um prototipo: publicacao de codigo nao equivale a
 deploy, homologacao de equipamentos ou integracao oficial com a GoodWe.
 
 ## Estrutura
@@ -81,11 +81,28 @@ Nao e necessario executar `npm install` na raiz.
 - [Contribuicao e revisao do grupo](CONTRIBUTING.md)
 - [Seguranca](SECURITY.md)
 - [Registro desta publicacao](docs/change-requests/CR-2026-10-12-002-github-publication.md)
+- [Codigo e relatorio complementar de 13/10, para revisao](docs/change-requests/CR-2026-10-13-005-github-publication.md)
+- [Relatorio complementar publico em PDF](docs/change-requests/pdf/EMPS_RELATORIO_COMPLEMENTAR_PUBLICO_2026-10-13.pdf)
+
+## Estado das atualizacoes de 13/10
+
+- Navegacao, dashboard e paineis possuem melhorias documentadas nas CRs.
+- O replay GIE isolado e os exemplos do painel foram desativados no perfil
+  usado neste PC; seu codigo/testes continuam preservados para auditoria.
+- O hotfix de encerramento pre-pago foi publicado separadamente na API oficial.
+- Limite pre-pago, saldo a devolver e 10 minutos para retirar o conector foram
+  implementados/testados no codigo, mas ainda nao ativados na hospedagem.
+- Permanencia excedente conta tempo separado; tarifa monetaria nao definida.
+- A ponte de Caixa e um perfil local opt-in limitado, nao acesso geral de escrita.
+
+Esta branch destina-se a revisao do grupo. Codigo enviado ao GitHub nao
+significa backend/site oficial atualizado ou equipamento real homologado.
 
 ## Limites e seguranca
 
 - Dados ficticios e replay nao comprovam conexao com equipamentos reais.
-- O replay GIE isolado continua separado da telemetria oficial do dashboard.
+- O replay GIE isolado permanece separado da telemetria oficial e desativado
+  no perfil atual. Nao usar suas cenas como medicao real.
 - Stripe, quando configurado, e somente Sandbox; a configuracao local padrao
   utiliza o provider `sandbox`.
 - O schema SQL nao contem registros de usuarios, pagamentos ou sessoes reais.

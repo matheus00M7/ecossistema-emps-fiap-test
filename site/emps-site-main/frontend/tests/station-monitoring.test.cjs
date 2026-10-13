@@ -65,6 +65,16 @@ test('source keys prevent mixing physical, imported and simulated streams', () =
   assert.notEqual(m.sourceKey({ sourceId: 'a', provenance: 'MEASURED' }), m.sourceKey({ sourceId: 'a', provenance: 'SIMULATED' }));
   assert.notEqual(m.sourceKey({ sourceId: 'a', provenance: 'MEASURED' }), m.sourceKey({ sourceId: 'b', provenance: 'MEASURED' }));
 });
+
+test('operational history excludes simulation without certifying other records as measured', () => {
+  const measured = row(0, 2, { provenance: 'MEASURED' });
+  const imported = row(15, 3, { provenance: 'IMPORTED' });
+  const unknown = row(30, null);
+  const simulated = [row(45, 80, { provenance: 'SIMULATED' }), row(60, 90, { source: { id: 'sim', kind: 'SIMULATED' } }), row(75, 100, { readingSource: 'SIMULATOR' })];
+  assert.deepEqual([measured, imported, unknown, ...simulated].filter(m.isNonSimulatedReading), [measured, imported, unknown]);
+  assert.equal(unknown.provenance, undefined);
+  assert.equal(m.summarize(m.normalizeReadings(simulated.filter(m.isNonSimulatedReading), tz, origin)).solar, null);
+});
 test('visual example is deterministic, covers a full day and stays within SOC bounds', () => {
   const points = m.demoReadings(day, tz);
   assert.equal(points.length, 289); assert.equal(points[0].x, 0); assert.equal(points.at(-1).x, 1440);

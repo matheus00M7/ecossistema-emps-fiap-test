@@ -30,7 +30,11 @@ const AdminDashboard = dynamic(
 
 export function RoleDashboard({ stationId }: { stationId: string }) {
   const router = useRouter();
-  const [access, setAccess] = useState<{ stationId: string; session: FrontSession; station: StationInfo } | null>(null);
+  const [access, setAccess] = useState<{ stationId: string; session: FrontSession; station: StationInfo } | null>(() => {
+    const session = frontSession.get();
+    const cached = api.cached<StationInfo>(`/v2/stations/${encodeURIComponent(stationId)}`, stationId);
+    return session && cached ? { stationId, session, station: cached.value } : null;
+  });
   const [restoreError, setRestoreError] = useState("");
   const [retry, setRetry] = useState(0);
 
@@ -40,7 +44,7 @@ export function RoleDashboard({ stationId }: { stationId: string }) {
     const synchronizeSession = () => {
       if (!active) return;
       const currentSession = frontSession.get();
-      setAccess(current => current && currentSession ? { ...current, session: currentSession } : null);
+      setAccess(current => current && currentSession && current.session.usuarioId === currentSession.usuarioId && current.session.role === currentSession.role ? { ...current, session: currentSession } : null);
       if (!currentSession) {
         active = false;
         abort.abort();
@@ -50,7 +54,7 @@ export function RoleDashboard({ stationId }: { stationId: string }) {
 
     const restoreSession = async () => {
       setRestoreError("");
-      setAccess(null);
+      setAccess(current => current?.stationId === stationId ? current : null);
       try {
         const restoredSession = await api.ensureSession();
         if (!active) return;
@@ -63,6 +67,7 @@ export function RoleDashboard({ stationId }: { stationId: string }) {
         setAccess({ stationId, session: restoredSession, station });
       } catch (error) {
         if (active && window.location.pathname !== "/login") {
+          setAccess(null);
           setRestoreError(
             error instanceof Error
               ? error.message
