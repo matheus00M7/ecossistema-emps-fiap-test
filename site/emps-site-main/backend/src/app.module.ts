@@ -1,4 +1,6 @@
 import {RfidController} from './rfid.controller';
+import {ChargeLifecycleService} from './charge-lifecycle.service';
+import {ChargeLifecycleController,DeviceChargeLifecycleController} from './charge-lifecycle.controller';
 import {TelemetryController,DeviceTelemetryController} from './telemetry.controller';
 import {TelemetryService} from './telemetry.service';
 import {ReservationsController} from './reservations.controller';
@@ -74,7 +76,7 @@ function jwtSecret() {
     }),
     RealtimeModule,
   ],
-  controllers: [TelemetryController,DeviceTelemetryController,ReservationsController,RfidController,PublicWebChargeController,WebChargeController,StationPhotosController, PublicStationPhotosController, PlatformController, SessionBillingController, StationsController, GieController,
+  controllers: [ChargeLifecycleController,DeviceChargeLifecycleController,TelemetryController,DeviceTelemetryController,ReservationsController,RfidController,PublicWebChargeController,WebChargeController,StationPhotosController, PublicStationPhotosController, PlatformController, SessionBillingController, StationsController, GieController,
     AuthController,
     MobileAuthController,
     MobileController,
@@ -85,7 +87,7 @@ function jwtSecret() {
     ChargerProvisioningDeviceController,
     DashboardController,
   ],
-  providers: [TelemetryService,ReservationsService,RfidService,PrepaidBudgetService,WebChargeGuard,PhotoStorage, StationPhotosService, PlatformAccessService, PlatformStationsService, StationMembersService, NotificationGateway, SessionBillingService, GieService, LocalGieDemoService,
+  providers: [ChargeLifecycleService,TelemetryService,ReservationsService,RfidService,PrepaidBudgetService,WebChargeGuard,PhotoStorage, StationPhotosService, PlatformAccessService, PlatformStationsService, StationMembersService, NotificationGateway, SessionBillingService, GieService, LocalGieDemoService,
     AdminOperationsService,
     MobileService,
     PaymentGatewayService,

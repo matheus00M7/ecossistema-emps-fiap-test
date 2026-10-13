@@ -2,7 +2,7 @@
 
 import { ChevronDown, ChevronLeft, ChevronRight, Layers2, X } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
+import { NavigationLink as Link } from './NavigationLink';
 import { useId, useState } from "react";
 import { empsNavigationItems, semsSidebarItems } from "./shell-navigation";
 import { Popover } from "@/components/ui/Popover";

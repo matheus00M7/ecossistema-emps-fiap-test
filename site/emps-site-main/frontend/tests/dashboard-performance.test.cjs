@@ -10,7 +10,7 @@ function load(file, mocks) {
   const filename = path.join(root, file), child = new Module(filename, module);
   child.paths = Module._nodeModulePaths(path.dirname(filename));
   const original = child.require.bind(child);
-  child.require = name => Object.hasOwn(mocks, name) ? mocks[name] : original(name);
+  child.require = name => Object.hasOwn(mocks, name) ? mocks[name] : name === './navigation-cache' ? load('services/navigation-cache.ts', {}) : original(name);
   child._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText, filename);
   return child.exports;
 }
@@ -61,7 +61,7 @@ test('overlapping dashboard refreshes share the current read instead of queuing 
       '@/components/energy/GieControls': { GieControls: () => null }, '@/components/shell/AppShell': { AppShell: () => null },
       '@/components/realtime/RealtimeProvider': { useRealtime: () => ({ changeRevision: 0, connectionVersion: 0, status: 'connected' }) },
       '@/domain/gie': { energyFromGie: () => ({}) }, './StationDashboard': { StationDashboard: () => null },
-      '@/services/emps-api': { isDemoMode: false, api: { dashboard: () => new Promise(resolve => requests.push(resolve)) } } });
+      '@/services/emps-api': { isDemoMode: false, api: { cachedDashboard: () => null, dashboard: () => new Promise(resolve => requests.push(resolve)) } } });
     const render = () => { stateIndex = 0; refIndex = 0; return AdminDashboard({ stationId: '7' }); };
     render(); effects.splice(0).forEach(effect => effect());
     requests[0]({ energyFlow: {} }); await new Promise(resolve => setImmediate(resolve));

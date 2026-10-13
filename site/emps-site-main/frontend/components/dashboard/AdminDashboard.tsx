@@ -7,13 +7,13 @@ import { AppShell } from "@/components/shell/AppShell";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { energyFromGie, type GieState } from "@/domain/gie";
 import type { Charger, DashboardData } from "@/domain/emps";
-import { api, isDemoMode } from "@/services/emps-api";
+import { api, isDemoMode, isAccessDenied } from "@/services/emps-api";
 import { StationDashboard, type StationInfo } from "./StationDashboard";
 
 export function AdminDashboard({ stationId, station }: { stationId: string; station?: StationInfo }) {
   const [gie, setGie] = useState<GieState | null>(null);
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(() => api.cachedDashboard(stationId)?.value ?? null);
+  const [loading, setLoading] = useState(() => !api.cachedDashboard(stationId));
   const [error, setError] = useState("");
   const loadGenerationRef = useRef(0);
   const visibleLoadGenerationRef = useRef(0);
@@ -29,17 +29,17 @@ export function AdminDashboard({ stationId, station }: { stationId: string; stat
     const generation = ++loadGenerationRef.current;
     if (!silent) {
       visibleLoadGenerationRef.current = generation;
-      setLoading(true);
+      setLoading(!api.cachedDashboard(stationId));
       setError("");
     }
     try {
-      const nextData = await api.dashboard(stationId);
+      const nextData = await api.dashboard(stationId, silent);
       if (generation !== loadGenerationRef.current) return;
       if (silent) startTransition(() => setData(nextData));
       else setData(nextData);
       setError("");
     } catch (loadError) {
-      if (!silent && generation === loadGenerationRef.current) {
+      if ((!silent || isAccessDenied(loadError)) && generation === loadGenerationRef.current) {
         setData(null);
         setError(loadError instanceof Error ? loadError.message : "Nao foi possivel carregar o painel EMPS.");
       }
@@ -98,7 +98,7 @@ export function AdminDashboard({ stationId, station }: { stationId: string; stat
   return <AppShell eyebrow="Minhas instalacoes" showEmpsHeaderLogo title="Painel do Eletroposto">
     {loading ? <div className="loading-panel"><RefreshCw className="spin" size={20} aria-hidden="true" />Carregando painel EMPS</div>
       : error || !data ? <div className="loading-panel" role="alert"><AlertTriangle size={20} aria-hidden="true" /><span>{error || "A API nao devolveu os dados do painel."}</span><button className="table-action" onClick={() => void load()} type="button"><RefreshCw size={14} aria-hidden="true" />Tentar novamente</button></div>
-      : <StationDashboard stationId={stationId} initialStation={station} data={data} telemetry={operationalGie ? energyFromGie(operationalGie) : data.energyFlow} gieMode={operationalGie?.mode} onChargersChange={updateChargers} onRefresh={refresh} gieControls={!isDemoMode ? <GieControls onState={receiveGie} /> : null} />}
+      : <StationDashboard stationId={stationId} initialStation={station} data={data} telemetry={operationalGie ? energyFromGie(operationalGie) : data.energyFlow} gieState={gie} gieMode={operationalGie?.mode} onChargersChange={updateChargers} onRefresh={refresh} gieControls={!isDemoMode ? <GieControls initialStationId={stationId} onState={receiveGie} /> : null} />}
   </AppShell>;
 }
 

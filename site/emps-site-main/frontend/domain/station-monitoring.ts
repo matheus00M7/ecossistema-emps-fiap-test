@@ -2,7 +2,7 @@ export type MonitoringPeriod = 'day' | 'week' | 'month' | 'year';
 export type Reading = {
   id?: string; measuredAt: string; sourceId?: string; provenance?: string;
   source?: { id: string; label: string; kind: string; verifiedPhysical?: boolean } | null;
-  measurementQuality?: string;
+  measurementQuality?: string; readingSource?: string;
   solarPowerKw?: unknown; gridPowerKw?: unknown; batteryPowerKw?: unknown;
   batteryChargePowerKw?: unknown; batteryDischargePowerKw?: unknown;
   chargerPowerKw?: unknown; buildingPowerKw?: unknown; batteryStateOfChargePercent?: unknown;
@@ -13,7 +13,12 @@ export type MonitorPoint = {
   solar: number | null; grid: number | null; battery: number | null;
   charger: number | null; load: number | null; soc: number | null;
   importTariff: number | null; exportTariff: number | null;
+  sourceLabel?: string; provenance?: string; quality?: string;
 };
+
+export function isNonSimulatedReading(row: Reading) {
+  return row.provenance !== 'SIMULATED' && row.source?.kind !== 'SIMULATED' && row.readingSource !== 'SIMULATOR';
+}
 export const series = [
   { key: 'solar', label: 'Potência solar', color: '#d3ab32' },
   { key: 'load', label: 'Consumo do prédio', color: '#9e73d0' },
@@ -105,12 +110,13 @@ export function normalizeReadings(rows: Reading[], timezone: string, origin: num
       battery: charge !== null && discharge !== null ? discharge - charge : n(row.batteryPowerKw),
       charger: n(row.chargerPowerKw, true), load: n(row.buildingPowerKw, true),
       soc: soc !== null && soc <= 100 ? soc : null, importTariff: null, exportTariff: null,
+      sourceLabel: row.source?.label ?? 'Fonte não informada', provenance: row.provenance ?? 'UNKNOWN', quality: row.measurementQuality ?? 'UNKNOWN',
     };
   });
 }
 export function withGaps(points: MonitorPoint[]) {
   return points.flatMap((point, index) => index && point.at - points[index - 1].at > 20 * 60_000
-    ? [{ ...point, at: points[index - 1].at + 1, x: points[index - 1].x + .001, solar: null, grid: null, battery: null, charger: null, load: null, soc: null, importTariff: null, exportTariff: null }, point]
+    ? [{ ...point, quality: 'MISSING', at: points[index - 1].at + 1, x: points[index - 1].x + .001, solar: null, grid: null, battery: null, charger: null, load: null, soc: null, importTariff: null, exportTariff: null }, point]
     : [point]);
 }
 export function integrate(points: MonitorPoint[], key: PowerKey, direction: 'all' | 'positive' | 'negative' = 'all') {

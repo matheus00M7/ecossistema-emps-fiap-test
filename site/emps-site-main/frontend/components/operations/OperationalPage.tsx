@@ -4,7 +4,7 @@ import { AlertCircle, CalendarDays, CheckCircle2, Info, Search, X } from 'lucide
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppShell } from '@/components/shell/AppShell';
 import type { ApiResource, ChargingSession, ResourceRow } from '@/domain/emps';
-import { api, isReadOnlyMode } from '@/services/emps-api';
+import { api, isReadOnlyMode, isAccessDenied } from '@/services/emps-api';
 import { useRealtime } from '@/components/realtime/RealtimeProvider';
 import { resourceRealtimeRevision } from '@/services/emps-realtime';
 import { getActionLabel, getRowKey, operationColumns, operationConfigs } from './operation-config';
@@ -15,7 +15,7 @@ import styles from './operations.module.css';
 export function OperationalPage({ resource }: { resource: ApiResource }) {
   const config = operationConfigs[resource];
   const financial = resource === 'sessoes' || resource === 'pagamentos';
-  const [rows, setRows] = useState<ResourceRow[]>([]);
+  const [rows, setRows] = useState<ResourceRow[]>(() => api.cachedList(resource)?.value ?? []);
   const [query, setQuery] = useState('');
   const [serverQuery, setServerQuery] = useState('');
   const [filter, setFilter] = useState('todos');
@@ -23,10 +23,10 @@ export function OperationalPage({ resource }: { resource: ApiResource }) {
   const [custom, setCustom] = useState({ from: '', to: '' });
   const [sort, setSort] = useState<SortOrder>(resource === 'alertas' ? 'priority' : resource === 'clientes' ? 'name' : 'recent');
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !api.cachedList(resource));
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(() => { const cached = api.cachedList(resource); return cached ? new Date(cached.updatedAt) : null; });
   const [selected, setSelected] = useState<ResourceRow | null>(null);
   const [actionRow, setActionRow] = useState<ResourceRow | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -49,17 +49,17 @@ export function OperationalPage({ resource }: { resource: ApiResource }) {
     if (silent && inFlight.current) return;
     const current = ++generation.current;
     inFlight.current = true;
-    if (silent) setRefreshing(true);
+    if (silent || api.cachedList(resource, financial ? serverQuery : '')) setRefreshing(true);
     else setLoading(true);
     try {
-      const next = await api.list(resource, financial ? serverQuery : '');
+      const next = await api.list(resource, financial ? serverQuery : '', silent);
       if (current !== generation.current) return;
       setRows(next);
-      setLoadedAt(new Date());
+      setLoadedAt(new Date(api.cachedList(resource, financial ? serverQuery : '')?.updatedAt ?? Date.now()));
       setLoadError('');
     } catch (error) {
       if (current === generation.current) {
-        if (!silent) { setRows([]); setLoadedAt(null); }
+        if (!silent || isAccessDenied(error)) { setRows([]); setLoadedAt(null); }
         setLoadError(error instanceof Error ? error.message : 'Não foi possível carregar os dados.');
       }
     } finally {

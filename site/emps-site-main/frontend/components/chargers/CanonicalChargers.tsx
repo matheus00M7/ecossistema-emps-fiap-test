@@ -2,9 +2,9 @@
 
 import { Info, QrCode, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import { NavigationLink as Link } from '@/components/shell/NavigationLink';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, isReadOnlyMode } from '@/services/emps-api';
+import { api, isReadOnlyMode, isAccessDenied } from '@/services/emps-api';
 import { formatKw } from '@/utils/formatters';
 import { OperationsDialog, OperationsEmpty, OperationsHeader, OperationsPagination, OperationsSummary } from '@/components/operations/OperationsUI';
 import { pageSlice } from '@/components/operations/operational-model';
@@ -16,16 +16,16 @@ const filters = [{ key: 'all', label: 'Todos' }, { key: 'available', label: 'Dis
   { key: 'pending', label: 'Pendentes' }, { key: 'disabled', label: 'Desabilitados' }];
 
 export function CanonicalChargers({ navigation }: { navigation?: ReactNode }) {
-  const [stations, setStations] = useState<ListedCharger['station'][]>([]);
-  const [rows, setRows] = useState<ListedCharger[]>([]);
+  const [stations, setStations] = useState<ListedCharger['station'][]>(() => api.cached<ListedCharger['station'][]>('/v2/stations')?.value ?? []);
+  const [rows, setRows] = useState<ListedCharger[]>(() => api.cached<ListedCharger[]>('/v2/chargers')?.value ?? []);
   const [station, setStation] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !api.cached('/v2/chargers'));
   const [refreshing, setRefreshing] = useState(false);
-  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(() => { const cached = api.cached('/v2/chargers'); return cached ? new Date(cached.updatedAt) : null; });
   const [selected, setSelected] = useState<ListedCharger | null>(null);
   const [qrCharger, setQrCharger] = useState<ListedCharger | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,13 +36,13 @@ export function CanonicalChargers({ navigation }: { navigation?: ReactNode }) {
     if (silent && inFlight.current) return;
     const current = ++generation.current;
     inFlight.current = true;
-    if (silent) setRefreshing(true); else setLoading(true);
+    if (silent || api.cached('/v2/chargers')) setRefreshing(true); else setLoading(true);
     try {
-      const [chargers, availableStations] = await Promise.all([api.platform<ListedCharger[]>('/v2/chargers'), api.platform<ListedCharger['station'][]>('/v2/stations')]);
+      const [chargers, availableStations] = await Promise.all([api.platform<ListedCharger[]>('/v2/chargers', {}, { force: silent }), api.platform<ListedCharger['station'][]>('/v2/stations', {}, { force: silent })]);
       if (current !== generation.current) return;
-      setRows(chargers); setStations(availableStations); setLoadedAt(new Date()); setError('');
+      setRows(chargers); setStations(availableStations); setLoadedAt(new Date(api.cached('/v2/chargers')?.updatedAt ?? Date.now())); setError('');
     } catch (cause) {
-      if (current === generation.current) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os carregadores.'); if (!silent) { setRows([]); setLoadedAt(null); } }
+      if (current === generation.current) { setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os carregadores.'); if (!silent || isAccessDenied(cause)) { setRows([]); setLoadedAt(null); } }
     } finally { if (current === generation.current) { inFlight.current = false; setLoading(false); setRefreshing(false); } }
   }, []);
   useEffect(() => { void load(); return () => { generation.current += 1; }; }, [load]);

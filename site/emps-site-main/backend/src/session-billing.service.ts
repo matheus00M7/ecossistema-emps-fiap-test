@@ -1,4 +1,5 @@
 import {paymentDisposition,recordPaymentDisposition} from './payment-disposition';
+import {lifecycleOf,presentLifecycle,disconnectLifecycle} from './charge-lifecycle';
 import {chargeActor,chargeOwner,type ChargeSubject} from './charge-subject';
 import {BadRequestException,ConflictException,Controller,Get,Injectable,NotFoundException,Param,Post,Req,UseGuards} from '@nestjs/common';
 import {Prisma,Role} from '@prisma/client';
@@ -17,11 +18,19 @@ export class SessionBillingService {
  constructor(private readonly db:PrismaService,private readonly gateway:PaymentGatewayService,private readonly realtime:RealtimeService){}
  private async owned(userId:ChargeSubject,id:string){const actor=await chargeActor(this.db,userId);const s=await this.db.chargingSession.findFirst({where:{id:bigId(id),...chargeOwner(actor)},include:{paymentIntent:true,charger:true,payments:true}});if(!s)throw new NotFoundException('Sessão não encontrada');if(!ledgerOf(s))throw new ConflictException('Sessão usa cobrança legada');return s;}
  private publish(s:{id:bigint;clientId:number|null;chargerId:number}){this.realtime.publish({topic:'session.updated',entityId:s.id,customerId:s.clientId??undefined,operational:true});this.realtime.publish({topic:'payment.updated',entityId:s.id,customerId:s.clientId??undefined,operational:true});this.realtime.publish({topic:'charger.updated',entityId:s.chargerId});}
- async quote(userId:ChargeSubject,id:string){const s=await this.owned(userId,id),l=ledgerOf(s)!;const breakdown=l.phase==='frozen'?l.breakdown:calculateSession(id,l.intervals,l.charge_completed_at??s.endTime?.toISOString(),s.endTime?new Date().toISOString():null);return {sessionId:id,status:s.status.toLowerCase(),frozen:l.phase==='frozen',disconnectedAt:s.disconnectedAt,breakdown:{customer:breakdown!.customer,intervals:breakdown!.intervals,overstay:breakdown!.overstay,tariff_version:breakdown!.tariff_version},provider:s.paymentIntent?.provider?.replace('_deferred','')??'sandbox',paymentRequired:s.status!=='FINISHED'};}
+ async quote(userId:ChargeSubject,id:string){const s=await this.owned(userId,id),l=ledgerOf(s)!;const breakdown=l.phase==='frozen'?l.breakdown:calculateSession(id,l.intervals,l.charge_completed_at??s.endTime?.toISOString(),s.endTime?new Date().toISOString():null,!!lifecycleOf(s.billingSnapshot));return {sessionId:id,status:s.status.toLowerCase(),frozen:l.phase==='frozen',disconnectedAt:s.disconnectedAt,lifecycle:presentLifecycle(s.billingSnapshot),breakdown:{customer:breakdown!.customer,intervals:breakdown!.intervals,overstay:breakdown!.overstay,tariff_version:breakdown!.tariff_version},provider:s.paymentIntent?.provider?.replace('_deferred','')??'sandbox',paymentRequired:s.status!=='FINISHED'};}
  async disconnect(userId:ChargeSubject,id:string){
   await this.owned(userId,id);if(process.env.OCPP_GATEWAY_URL)throw new ConflictException('Aguarde confirmação de desconexão do gateway físico');
   const s=await this.db.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM charging_sessions WHERE id=${bigId(id)} FOR UPDATE`;
    const s=await tx.chargingSession.findUniqueOrThrow({where:{id:bigId(id)}}),l=ledgerOf(s)!;
+   const policy=lifecycleOf(s.billingSnapshot);
+   if(policy){
+    if(policy.disconnectedAt)return s;
+    if(!s.endTime||!policy.stoppedAt)throw new ConflictException('Aguarde a parada de energia');
+    const now=new Date(),updated=await tx.chargingSession.update({where:{id:s.id},data:{disconnectedAt:now,billingSnapshot:disconnectLifecycle(s.billingSnapshot,now,'CUSTOMER_CONFIRMED_SANDBOX')}});
+    await tx.chargerLiveStatus.updateMany({where:{chargerId:s.chargerId,operationalStatus:'FINISHING',currentPowerKw:0},data:{operationalStatus:'AVAILABLE'}});
+    return updated;
+   }
    if(l.phase==='frozen')return s;if(!s.endTime||s.status!=='WAITING_PAYMENT')throw new ConflictException('Encerre a carga antes de confirmar a retirada');
    const now=new Date();l.phase='frozen';l.disconnection_source='customer_confirmed_logical_sandbox';l.breakdown=calculateSession(id,l.intervals,l.charge_completed_at??s.endTime.toISOString(),now.toISOString());
    const updated=await tx.chargingSession.update({where:{id:s.id},data:{disconnectedAt:now,billingSnapshot:json(l),totalPrice:l.breakdown.customer.total_amount}});

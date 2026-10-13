@@ -17,7 +17,7 @@ export function useStationHistory(stationId: string, from: number, to: number, r
     async function read(start: number, end: number): Promise<Reading[]> {
       requests++;
       const query = new URLSearchParams({ from: new Date(start).toISOString(), to: new Date(end).toISOString() });
-      const rows = await api.platform<Reading[]>(`/v2/stations/${encodeURIComponent(stationId)}/telemetry/history?${query}`, { signal: controller.signal });
+      const rows = await api.platform<Reading[]>(`/v2/stations/${encodeURIComponent(stationId)}/telemetry/history?${query}`, { signal: controller.signal }, { force: revision > 0 });
       if (rows.length < 1000) return rows;
       if (requests >= 24 || end - start < 60_000) { truncated = true; return rows; }
       // The endpoint caps each response at 1,000 rows. Split instead of silently dropping older samples.

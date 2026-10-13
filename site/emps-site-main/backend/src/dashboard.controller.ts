@@ -1,4 +1,5 @@
 import { StationScoped } from './auth';
+import {cashReturnFields,presentLifecycle} from './charge-lifecycle';
 import { dashboardSummary } from './dashboard-summary';
 import {
   activeSessionStatuses,
@@ -28,7 +29,7 @@ export class DashboardController {
         where: { charger: { station: scope } },
         select: {
           id: true, clientId: true, chargerId: true, status: true, requestedAt: true, startTime: true, endTime: true,
-          durationSeconds: true, energyKwh: true, totalPrice: true,
+          durationSeconds: true, energyKwh: true, totalPrice: true, billingSnapshot:true,
           client: { select: { id: true, name: true } },
           charger: { select: { id: true, name: true, stationId: true } },
         },
@@ -36,7 +37,7 @@ export class DashboardController {
       }),
       this.prisma.payment.findMany({
         where: { session: { charger: { station: scope } } },
-        select: { id: true, code: true, sessionId: true, status: true, method: true, amount: true, paidAt: true, createdAt: true },
+        select: { id: true, code: true, sessionId: true, status: true, method: true, amount: true, paidAt: true, createdAt: true, provider:true,idempotencyKey:true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.alert.findMany({
@@ -44,15 +45,17 @@ export class DashboardController {
         include: { charger: true }, orderBy: { createdAt: 'desc' },
       }),
     ]);
-    const latestPayment = new Map<bigint, typeof paymentRows[number]>();
-    for (const payment of paymentRows) if (!latestPayment.has(payment.sessionId)) latestPayment.set(payment.sessionId, payment);
-    const sessions = sessionRows.map(row => ({ ...row, client: row.client ?? { id: null, name: 'Cliente avulso (caixa)' },
+    const snapshots=new Map(sessionRows.map(row=>[row.id,row.billingSnapshot]));
+    const safePayments=paymentRows.map(({idempotencyKey,provider,...row})=>({...row,...cashReturnFields({...row,idempotencyKey,provider},snapshots.get(row.sessionId))}));
+    const latestPayment = new Map<bigint, typeof safePayments[number]>();
+    for (const payment of safePayments) if (!latestPayment.has(payment.sessionId)) latestPayment.set(payment.sessionId, payment);
+    const sessions = sessionRows.map(({billingSnapshot,...row}) => ({ ...row, lifecycle:presentLifecycle(billingSnapshot),client: row.client ?? { id: null, name: 'Cliente avulso (caixa)' },
       startTime: row.startTime ?? row.requestedAt, stationId: row.charger.stationId,
       durationMinutes: row.durationSeconds === null ? null : Math.ceil(row.durationSeconds / 60),
       payment: latestPayment.get(row.id) ?? null,
     }));
     const byId = new Map(sessions.map(session => [session.id, session]));
-    const payments = paymentRows.map(row => ({ ...row, session: byId.get(row.sessionId) }));
+    const payments = safePayments.map(row => ({ ...row, session: byId.get(row.sessionId) }));
     const activeByCharger = new Map<number, typeof sessions>();
     for (const session of sessions) if (activeSessionStatuses.includes(session.status)) {
       const active = activeByCharger.get(session.chargerId) ?? [];
@@ -98,6 +101,7 @@ export class DashboardController {
     const sessions = sessionRows.map(presentAdminSession);
     const payments = paymentRows.map((p) => ({
       ...p,
+      ...cashReturnFields(p,p.session.billingSnapshot),
       session: presentAdminSession(p.session),
     }));
     return dashboardSummary(chargers, sessions, payments, alerts);
